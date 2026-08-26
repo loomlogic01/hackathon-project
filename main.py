@@ -133,18 +133,35 @@ async def upload_pdf(file: UploadFile = File(...)):
     turnovr_match = re.search(r"(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:Turnover|Revenue|Sales)", extracted_text, re.IGNORECASE)
     turnover_amount = float(turnovr_match.group(1).replace(',', '')) if turnovr_match else 0
 
+    # MOCK API Calls for GSTN, MSME, and PAN verification
+    # EXTRACTING GSTN, UDYAM, and PAN from the extracted text
+    gst_match = re.search(r"\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b", extracted_text, re.IGNORECASE)
+    udyam_match = re.search(r"\b(UDYAM-[A-Z]{2}-\d{2}-\d{7})\b", extracted_text, re.IGNORECASE)
+    pan_match = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z]{1})\b", extracted_text, re.IGNORECASE)
+    
+    # CALLING MOCK API ENDPOINTS
+    gstn_verification = verify_gstn(gst_match.group(0)) if gst_match else {"valid": False, "message": "GSTN Not Found"}
+    msme_verification = verify_msme(udyam_match.group(0)) if udyam_match else {"valid": False, "message": "Udyam Not Found"}
+    pan_verification = verify_pan(pan_match.group(0)) if pan_match else {" valid": False, "message": "PAN Not Found"}
+    
     # ---Scoring Logic---
     score =0
-    max_score = 100
     passed_checks = []
     failed_checks = []
     
     # msme verification (25 points)
-    if has_msme_cert:
+    if has_msme_cert or msme_verification.get("valid"):
         score += 25
         passed_checks.append("MSME Certification Verified")
     else:
         failed_checks.append("MSME Certification Not Found")
+
+    # GSTN verification (25 points)
+    if gstn_verification.get("valid"):
+        score += 25
+        passed_checks.append("GSTN Verified")
+    else:
+        failed_checks.append("GSTN Not Found or Invalid")
         
     # experience verification (25 points)
     if years_of_experience >= 3:
@@ -183,9 +200,13 @@ async def upload_pdf(file: UploadFile = File(...)):
             "turnover_amount": turnover_amount,
             "has_msme_cert": has_msme_cert
         },
+       "mock_api_verifications": {
+            "gstn_verification": gstn_verification,
+            "msme_verification": msme_verification,
+            "pan_verification": pan_verification
+        },
         "compliance_evaluation":{
                 "overall_score": score,
-                "max_score": max_score,
                 "passed_checks": passed_checks,
                 "failed_checks": failed_checks
             },
