@@ -4,8 +4,18 @@ import pdfplumber
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
+import json
+from database import init_db, get_db_connection
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="GeM Bid Compliance Platform")
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    # Startup code
+    init_db()
+    yield
+    # Shutdown code (if needed)
+
+app = FastAPI(title="GeM Bid Compliance Platform", lifespan=app_lifespan)
 
 def parse_date(date_str: str):
     # Commmon date formats: DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD, YYYY-MM-DD
@@ -25,6 +35,7 @@ class TenderCheck(BaseModel):
 @app.get("/")
 def home():
     return {"message": "GeM Compliance Verification API is running!"}
+
 
 @app.get("/mock-api/gstn/{gstin}")
 def verify_gstn(gstin: str):
@@ -136,7 +147,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     # MOCK API Calls for GSTN, MSME, and PAN verification
     # EXTRACTING GSTN, UDYAM, and PAN from the extracted text
     gst_match = re.search(r"\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b", extracted_text, re.IGNORECASE)
-    udyam_match = re.search(r"\b(UDYAM-[A-Z]{2}-\d{2}-\d{7})\b", extracted_text, re.IGNORECASE)
+    udyam_match = re.search(r"\b(UDYAM-[A-Z]{2}-\d{2}-\d{6,7})\b", extracted_text, re.IGNORECASE)
     pan_match = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z]{1})\b", extracted_text, re.IGNORECASE)
     
     # CALLING MOCK API ENDPOINTS
@@ -191,10 +202,37 @@ async def upload_pdf(file: UploadFile = File(...)):
         compliance_status = "Partially Compliant - Action Required"
     else:
         compliance_status = "Non-Compliant"
+        
+    # DATABASE INSERTION
+    try: 
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        insert_query = """
+            INSERT INTO bid_evalution (
+            filename, tender_id, years_of_experience, turnover_amount, has_msme_cert,
+            gstn_verification, msme_verification, pan_verification, score,
+            passed_checks, failed_checks, compliance_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+
+        cur.execute(insert_query, (
+            file.filename, tender_ref_id, years_of_experience, turnover_amount, has_msme_cert,
+            json.dumps(gstn_verification), json.dumps(msme_verification), json.dumps(pan_verification), score,
+            json.dumps(passed_checks), json.dumps(failed_checks), compliance_status
+        ))
+        conn.commit()
+        record_id = cur.lastrowid
+    except Exception as e:
+        print(f"Error inserting record into database: {e}")
+        record_id = None
+    finally:
+        conn.close()
 
     return {
         "filename": file.filename,
-       "parsed_data": {
+        "id": record_id,
+        "parsed_data": {
             "tender_ref_id": tender_ref_id,
             "years_of_experience": years_of_experience,
             "turnover_amount": turnover_amount,
@@ -212,3 +250,23 @@ async def upload_pdf(file: UploadFile = File(...)):
             },
         "compliance_status": compliance_status
     },
+    
+@app.get("/get-evaluation/{filename}")
+def get_evaluation(filename: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    select_query = "SELECT * FROM bid_evalution WHERE filename = ? ORDER BY created_at DESC;"
+    cur.execute(select_query, (filename,))
+    evaluations = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Convert SQLite rows to dictionaries for better JSON serialization
+    evaluations = []
+    for row in evaluations:
+        item = dict(row)
+        item['passed_checks'] = json.loads(item['passed_checks'])
+        item['failed_checks'] = json.loads(item['failed_checks'])
+        evaluations.append(item)
+    return evaluations
