@@ -8,6 +8,9 @@ import json
 from database import init_db, get_db_connection
 from contextlib import asynccontextmanager
 
+#importing the LLM
+import ollama      
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     # Startup code
