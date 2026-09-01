@@ -1,15 +1,17 @@
 import io
 import re
 import pdfplumber
+
+#importing the LLM
+import ollama  
+
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 import json
 from database import init_db, get_db_connection
 from contextlib import asynccontextmanager
-
-#importing the LLM
-import ollama      
+    
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
@@ -28,6 +30,37 @@ def parse_date(date_str: str):
         except ValueError:
             continue
     return None
+
+#the LLM verifies the details just extracted
+def ai_review_bid(extracted_text: str, regex_results: dict) -> dict:
+    prompt = f"""You are reviewing a government tender bid document for GeM compliance.
+
+Here is what basic pattern-matching found automatically:
+{json.dumps(regex_results, indent=2)}
+
+Here is the raw extracted text from the document:
+{extracted_text[:3000]}
+
+Task: Check if the automatic extraction above looks correct based on the text.
+If anything seems missing or wrong, note it. Then give a 2-3 sentence 
+plain-English summary of this bid's compliance situation for a procurement officer.
+
+Respond ONLY as JSON in this exact format, no other text:
+{{"extraction_looks_correct": true or false, "notes": "...", "summary": "..."}}
+"""
+
+    response = ollama.chat(
+        model="llama3.1:8b",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw_reply = response["message"]["content"]
+
+    try:
+        return json.loads(raw_reply)
+    except json.JSONDecodeError:
+        return {"extraction_looks_correct": None, "notes": "AI response unparseable", "summary": raw_reply}
+
 
 # Request Body Schema for eligibility checks
 class TenderCheck(BaseModel):
@@ -147,6 +180,18 @@ async def upload_pdf(file: UploadFile = File(...)):
     turnovr_match = re.search(r"(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:Turnover|Revenue|Sales)", extracted_text, re.IGNORECASE)
     turnover_amount = float(turnovr_match.group(1).replace(',', '')) if turnovr_match else 0
 
+    # 7. AI double-check on top of regex extraction
+    ai_review = ai_review_bid(
+        extracted_text,
+        {
+            "has_msme_cert": has_msme_cert,
+            "tender_ref_id": tender_ref_id,
+            "years_of_experience": years_of_experience,
+            "turnover_amount": turnover_amount,
+            "has_affidavit": has_affidavit
+        }
+    )
+
     # MOCK API Calls for GSTN, MSME, and PAN verification
     # EXTRACTING GSTN, UDYAM, and PAN from the extracted text
     gst_match = re.search(r"\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b", extracted_text, re.IGNORECASE)
@@ -251,7 +296,8 @@ async def upload_pdf(file: UploadFile = File(...)):
                 "passed_checks": passed_checks,
                 "failed_checks": failed_checks
             },
-        "compliance_status": compliance_status
+        "compliance_status": compliance_status,
+        "ai_review": ai_review
     },
     
 @app.get("/get-evaluation/{filename}")
