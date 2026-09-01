@@ -17,9 +17,14 @@ def init_db():
         tender_id VARCHAR(255) DEFAULT 'Not specified',
         years_of_experience INT DEFAULT 0,
         turnover_amount FLOAT DEFAULT 0,
-        verdict VARCHAR(50) NOT NULL,
+        has_msme_cert BOOLEAN DEFAULT 0,
+        gstn_verification TEXT DEFAULT '{}',
+        msme_verification TEXT DEFAULT '{}',
+        pan_verification TEXT DEFAULT '{}',
+        score INT DEFAULT 0,
         passed_checks TEXT DEFAULT '[]',
         failed_checks TEXT DEFAULT '[]',
+        compliance_status VARCHAR(50) DEFAULT 'Unknown',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
