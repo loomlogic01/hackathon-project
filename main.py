@@ -1,12 +1,18 @@
 import io
 import re
+from click import prompt
 import pdfplumber
+
+#importing the LLM
+import ollama  # type: ignore
+
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 import json
 from database import init_db, get_db_connection
 from contextlib import asynccontextmanager
+    
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
@@ -25,6 +31,94 @@ def parse_date(date_str: str):
         except ValueError:
             continue
     return None
+
+#the LLM verifies the details just extracted
+def ai_review_bid(extracted_text: str, regex_results: dict, compliance_result: dict) -> dict:
+    prompt = f"""You are reviewing a government tender bid document for GeM compliance.
+
+Here is what basic pattern-matching found automatically:
+{json.dumps(regex_results, indent=2)}
+
+Here is the OFFICIAL compliance evaluation result. Treat this as ground truth —
+your summary must be consistent with it, not contradict it:
+{json.dumps(compliance_result, indent=2)}
+
+Here is the raw extracted text from the document:
+{extracted_text[:3000]}
+
+Task: Check if the automatic extraction above looks correct based on the text.
+If anything seems missing or wrong, note it. Then give a 2-3 sentence 
+plain-English summary of this bid's compliance situation for a procurement officer.
+If any checks failed according to the official result above, your summary MUST 
+mention that clearly — do not describe the bid as fully compliant if it isn't.
+
+Respond ONLY as JSON in this exact format, no other text:
+{{"extraction_looks_correct": true or false, "notes": "...", "summary": "..."}}
+"""
+
+    try:
+        response = ollama.chat(
+            model="llama3.1:8b",
+            messages=[
+                {"role": "user", "content": prompt}]
+        )
+        raw_reply = response["message"]["content"]
+        
+        try:
+            return json.loads(raw_reply)
+        except json.JSONDecodeError:
+            return {"extraction_lloks_correct": None, "notes":"AI response unparseable"}
+        
+    except Exception as e:
+        print(f"[Ollama Error]: {e}")
+        return {"extraction_looks_correct": True, "notes": "LLM review skipped (Model offline or downloading)."}
+       
+
+
+#chatbot
+def chat_with_bid(question: str, filename: str = None) -> str:
+    bid_context = ""
+
+    if filename:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM bid_evalution WHERE filename = ? ORDER BY created_at DESC LIMIT 1;",
+            (filename,)
+        )
+        row = cur.fetchone()
+        conn.close()
+
+        if row:
+            record = dict(row)
+            bid_context = f"""
+Here is the compliance evaluation data for the bid file "{filename}":
+{json.dumps(record, indent=2, default=str)}
+
+Use this data to answer the user's question about this specific bid.
+"""
+        else:
+            bid_context = f'No evaluation record was found for a file named "{filename}". Let the user know this if relevant.'
+
+    system_prompt = f"""You are a helpful assistant for a GeM (Government e-Marketplace) 
+procurement compliance platform. You help users understand bid compliance requirements 
+and, when given specific bid data, explain that bid's results in plain English.
+
+{bid_context}
+
+Answer clearly and concisely. If you don't have enough information to answer 
+accurately, say so instead of guessing.
+"""
+
+    response = ollama.chat(
+        model="llama3.1:8b",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question}
+        ]
+    )
+
+    return response["message"]["content"]
 
 # Request Body Schema for eligibility checks
 class TenderCheck(BaseModel):
@@ -142,7 +236,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     
     # 6. Financial Turnover Check
     turnovr_match = re.search(r"(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:Turnover|Revenue|Sales)", extracted_text, re.IGNORECASE)
-    turnover_amount = float(turnovr_match.group(1).replace(',', '')) if turnovr_match else 0
+    turnover_amount = float(turnovr_match.group(1).replace(',', '')) if turnovr_match else 0    
 
     # MOCK API Calls for GSTN, MSME, and PAN verification
     # EXTRACTING GSTN, UDYAM, and PAN from the extracted text
@@ -160,37 +254,37 @@ async def upload_pdf(file: UploadFile = File(...)):
     passed_checks = []
     failed_checks = []
     
-    # msme verification (25 points)
+    # msme verification (20 points)
     if has_msme_cert or msme_verification.get("valid"):
-        score += 25
+        score += 20
         passed_checks.append("MSME Certification Verified")
     else:
         failed_checks.append("MSME Certification Not Found")
 
-    # GSTN verification (25 points)
+    # GSTN verification (20 points)
     if gstn_verification.get("valid"):
-        score += 25
+        score += 20
         passed_checks.append("GSTN Verified")
     else:
         failed_checks.append("GSTN Not Found or Invalid")
         
-    # experience verification (25 points)
+    # experience verification (20 points)
     if years_of_experience >= 3:
-        score += 25
+        score += 20
         passed_checks.append("Years of Experience Verified")
     else:
         failed_checks.append("Insufficient Years of Experience ( minimum requirement: 3 years)")
     
-    # financial turnover verification (25 points)
+    # financial turnover verification (20 points)
     if turnover_amount  > 0:
-        score += 25
+        score += 20
         passed_checks.append("Financial Turnover Verified")
     else:
         failed_checks.append("Financial Turnover Not Found")
         
-    # affidavit verification (25 points)
+    # affidavit verification (20 points)
     if has_affidavit:
-        score += 25
+        score += 20
         passed_checks.append("Non-Blacklisting Affidavit Verified")
     else:
         failed_checks.append("Non-Blacklisting Affidavit Not Found")
@@ -202,7 +296,25 @@ async def upload_pdf(file: UploadFile = File(...)):
         compliance_status = "Partially Compliant - Action Required"
     else:
         compliance_status = "Non-Compliant"
-        
+
+    # AI double-check on top of regex extraction — now with the real result included
+    ai_review = ai_review_bid(
+        extracted_text,
+        {
+            "has_msme_cert": has_msme_cert,
+            "tender_ref_id": tender_ref_id,
+            "years_of_experience": years_of_experience,
+            "turnover_amount": turnover_amount,
+            "has_affidavit": has_affidavit
+        },
+        {
+            "overall_score": score,
+            "compliance_status": compliance_status,
+            "passed_checks": passed_checks,
+            "failed_checks": failed_checks
+        }
+    )
+
     # DATABASE INSERTION
     try: 
         conn = get_db_connection()
@@ -248,8 +360,9 @@ async def upload_pdf(file: UploadFile = File(...)):
                 "passed_checks": passed_checks,
                 "failed_checks": failed_checks
             },
-        "compliance_status": compliance_status
-    },
+        "compliance_status": compliance_status,
+        "ai_review": ai_review
+    }
     
 @app.get("/get-evaluation/{filename}")
 def get_evaluation(filename: str):
@@ -270,3 +383,12 @@ def get_evaluation(filename: str):
         item['failed_checks'] = json.loads(item['failed_checks'])
         evaluations.append(item)
     return evaluations
+
+class ChatRequest(BaseModel):
+    question: str
+    filename: str | None = None
+
+@app.post("/chat/")
+def chat(request: ChatRequest):
+    answer = chat_with_bid(request.question, request.filename)
+    return {"question": request.question, "filename": request.filename, "answer": answer}
