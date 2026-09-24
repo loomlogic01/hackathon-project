@@ -56,9 +56,10 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
     // Construct sample evaluation object
     const evalData = {
       filename: sample.filename,
-      id: 999,
+      id: sample.id === 'sample-1' ? 1 : sample.id === 'sample-2' ? 2 : sample.id === 'sample-3' ? 3 : sample.id === 'sample-4' ? 4 : 5,
       tender_id: sample.tenderId,
       risk_level: sample.riskLevel,
+      is_empty_pdf: Boolean(sample.is_empty_pdf),
       parsed_data: sample.parsed,
       mock_api_verifications: {
         gstn_verification: { valid: Boolean(sample.parsed.gstin), message: sample.parsed.gstin ? "Verified Active" : "Not Found" },
@@ -72,8 +73,8 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
       },
       compliance_status: sample.status,
       ai_review: {
-        extraction_looks_correct: true,
-        notes: "Catalog sample verified against GeM guidelines.",
+        extraction_looks_correct: !sample.is_empty_pdf,
+        notes: sample.is_empty_pdf ? "File is empty." : "Catalog sample verified against GeM guidelines.",
         summary: sample.aiSummary
       },
       officer_decision: sample.officerDecision,
@@ -154,6 +155,13 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
                 2. Or Instant Pitch Demo (1-Click Sample Bids)
               </span>
               <div className="space-y-2">
+                {uploadError && (
+                    <div className="p-3 mb-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{uploadError}</span>
+                    </div>
+                )}
+
                 {SAMPLE_BIDS_CATALOG.map((s) => (
                   <button
                     key={s.id}
@@ -180,19 +188,52 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
           </div>
 
         </div>
-
-        {uploadError && (
-          <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{uploadError}</span>
-          </div>
-        )}
       </div>
 
       {/* Main Results View if Evaluation exists */}
       {currentEvaluation ? (
         <div className="space-y-6">
           
+          {/* EMPTY DOCUMENT BANNER IF DETECTED */}
+          {(currentEvaluation.is_empty_pdf || currentEvaluation.parsed_data?.is_empty) && (
+            <div className="p-6 rounded-2xl bg-rose-50 border-2 border-rose-400 text-rose-950 shadow-sm flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center flex-shrink-0">
+                <XCircle className="w-7 h-7" />
+              </div>
+              <div>
+                <span className="text-xs font-black uppercase tracking-wider bg-rose-200 text-rose-900 px-2.5 py-0.5 rounded">
+                  EMPTY / BLANK PDF DETECTED
+                </span>
+                <h3 className="text-base font-black text-rose-900 mt-1">
+                  Uploaded Document Contains No Readable Bid Information
+                </h3>
+                <p className="text-xs text-rose-800 mt-0.5 leading-relaxed font-medium">
+                  The scanned file is completely blank. In accordance with GeM GTC 7.1 and GFR 2017 rules, blank documents are scored <strong>0 / 100</strong> and flagged for automatic disqualification.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* BLACKLISTED VENDOR CRITICAL BANNER */}
+          {currentEvaluation.parsed_data?.blacklist_verification?.is_blacklisted && (
+            <div className="p-6 rounded-2xl bg-rose-950 border-2 border-rose-600 text-white shadow-lg flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 animate-pulse">
+                <AlertCircle className="w-7 h-7" />
+              </div>
+              <div className="flex-1">
+                <span className="text-xs font-black uppercase tracking-wider bg-rose-600 text-white px-2.5 py-0.5 rounded">
+                  🚨 CRITICAL RISK: DEBARRED / BLACKLISTED VENDOR
+                </span>
+                <h3 className="text-base font-black text-white mt-1">
+                  {currentEvaluation.parsed_data?.blacklist_verification?.company_name || currentEvaluation.filename} is Listed on Central Debarment Database
+                </h3>
+                <p className="text-xs text-rose-200 mt-0.5 font-medium">
+                  {currentEvaluation.parsed_data?.blacklist_verification?.record?.reason || currentEvaluation.parsed_data?.blacklist_verification?.message}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Verification Pipeline Tracker */}
           <VerificationPipeline step={5} />
 
@@ -311,13 +352,13 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
                 </div>
 
                 {/* Parsed Attributes Comparison Grid */}
-                <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">MSME / Udyam No</span>
                     <span className="font-bold text-slate-800 block truncate">
                       {currentEvaluation.parsed_data?.udyam_no || (currentEvaluation.parsed_data?.has_msme_cert ? "Udyam Declared" : "Not Provided")}
                     </span>
-                    <span className="text-[10px] font-semibold text-emerald-600">
+                    <span className="text-[10px] font-semibold text-emerald-600 block mt-0.5">
                       {currentEvaluation.mock_api_verifications?.msme_verification?.valid ? "● Portal Active" : "○ Unverified"}
                     </span>
                   </div>
@@ -327,7 +368,7 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
                     <span className="font-bold text-slate-800 block truncate">
                       {currentEvaluation.parsed_data?.gstin || "Not Provided"}
                     </span>
-                    <span className="text-[10px] font-semibold text-emerald-600">
+                    <span className="text-[10px] font-semibold text-emerald-600 block mt-0.5">
                       {currentEvaluation.mock_api_verifications?.gstn_verification?.valid ? "● GSTN Verified" : "○ Unverified"}
                     </span>
                   </div>
@@ -337,8 +378,58 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
                     <span className="font-bold text-slate-800 block truncate">
                       {currentEvaluation.parsed_data?.pan_no || "Not Provided"}
                     </span>
-                    <span className="text-[10px] font-semibold text-emerald-600">
+                    <span className="text-[10px] font-semibold text-emerald-600 block mt-0.5">
                       {currentEvaluation.mock_api_verifications?.pan_verification?.valid ? "● Active Entity" : "○ Unverified"}
+                    </span>
+                  </div>
+
+                  <div className={`p-3 rounded-xl border ${currentEvaluation.parsed_data?.blacklist_verification?.is_blacklisted ? 'bg-rose-50 border-rose-300' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">Blacklist Screening</span>
+                    <span className={`font-bold block truncate ${currentEvaluation.parsed_data?.blacklist_verification?.is_blacklisted ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {currentEvaluation.parsed_data?.blacklist_verification?.is_blacklisted ? "🚨 BLACKLISTED" : "● CLEARED"}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
+                      {currentEvaluation.parsed_data?.blacklist_verification?.is_blacklisted ? "Found in GeM Registry" : "No adverse records"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">EPFO Code</span>
+                    <span className="font-bold text-slate-800 block truncate">
+                      {currentEvaluation.parsed_data?.epfo_esic?.epfo_code || "Not Provided"}
+                    </span>
+                    <span className={`text-[10px] font-semibold block mt-0.5 ${currentEvaluation.parsed_data?.epfo_esic?.epfo_code ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {currentEvaluation.parsed_data?.epfo_esic?.epfo_code ? "● EPFO Active" : "○ Missing"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">ESIC Registration</span>
+                    <span className="font-bold text-slate-800 block truncate">
+                      {currentEvaluation.parsed_data?.epfo_esic?.esic_code || "Not Provided"}
+                    </span>
+                    <span className={`text-[10px] font-semibold block mt-0.5 ${currentEvaluation.parsed_data?.epfo_esic?.esic_code ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {currentEvaluation.parsed_data?.epfo_esic?.esic_code ? "● ESIC Active" : "○ Missing"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">Startup / NSIC</span>
+                    <span className="font-bold text-slate-800 block truncate">
+                      {currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.details || (currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found ? "Startup Recognized" : (currentEvaluation.parsed_data?.startup_nsic_oem?.nsic?.details || "Not Claimed"))}
+                    </span>
+                    <span className={`text-[10px] font-semibold block mt-0.5 ${currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found ? "● DPIIT Recognized" : "○ Standard"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">OEM Authorization</span>
+                    <span className="font-bold text-slate-800 block truncate">
+                      {currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.details || (currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? "OEM Authorized" : "Not Attached")}
+                    </span>
+                    <span className={`text-[10px] font-semibold block mt-0.5 ${currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? "● MAF Attached" : "○ Reseller/Direct"}
                     </span>
                   </div>
 
@@ -360,6 +451,13 @@ export default function BidEvaluator({ currentEvaluation, setCurrentEvaluation, 
                     <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">Affidavit Declaration</span>
                     <span className="font-bold text-slate-800">
                       {currentEvaluation.parsed_data?.has_affidavit ? "Submitted" : "Missing"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">Make in India</span>
+                    <span className="font-bold text-slate-800">
+                      {currentEvaluation.parsed_data?.make_in_india?.local_content_percentage ? `${currentEvaluation.parsed_data.make_in_india.local_content_percentage}% Local Content` : "Not Declared"}
                     </span>
                   </div>
                 </div>

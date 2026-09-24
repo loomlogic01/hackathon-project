@@ -49,6 +49,11 @@ This platform replaces manual, error-prone verification with an **AI-powered ver
    - Every verification check is immutably logged to SQLite (`gembid.db`).
    - One-click exportable / printable official **GeM Compliance Certificate** with GFR 2017 formatting.
 
+7. **Cryptographic Audit Chain & Data Integrity**
+   - SHA-256 Document Fingerprinting: Every uploaded tender document is instantly hashed at binary level using SHA-256 upon ingestion to create a unique cryptographic fingerprint.
+   - Tamper-Evident Linked Ledger: Each compliance report stores both its current 'file_hash' and the 'previous_file_hash' of the preceding record, establishing an immutable cryptographic chain.
+   - Audit Verification Interface: Built-in UI inspect modal ('ReportModal.jsx') and evaluation deck allow procurement officers to review document hashes, verify audit chain continuity, and detect manual database tampering.
+
 ---
 
 ## 🛠️ Quick Start & Setup

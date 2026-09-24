@@ -153,10 +153,40 @@ export default function DashboardOverview({ evaluations = [], onSelectBid, onGoT
             <div>
               <div className="flex justify-between font-bold text-slate-800 mb-1.5">
                 <span>5. Non-Blacklisting & Integrity Affidavit</span>
-                <span className="text-amber-700">33% (Action Required)</span>
+                <span className="text-amber-700">60% Passed</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full" style={{ width: '33%' }}></div>
+                <div className="h-full bg-amber-500 rounded-full" style={{ width: '60%' }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between font-bold text-slate-800 mb-1.5">
+                <span>6. Central Debarment & Blacklist Registry Screening</span>
+                <span className="text-emerald-700">80% Cleared</span>
+              </div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: '80%' }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between font-bold text-slate-800 mb-1.5">
+                <span>7. EPFO / ESIC Statutory Labor Compliance</span>
+                <span className="text-emerald-700">60% Verified</span>
+              </div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: '60%' }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between font-bold text-slate-800 mb-1.5">
+                <span>8. Startup India, NSIC & OEM Authorization</span>
+                <span className="text-blue-700">40% Recognized</span>
+              </div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: '40%' }}></div>
               </div>
             </div>
           </div>

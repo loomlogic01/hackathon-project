@@ -49,7 +49,6 @@ export default function App() {
     };
 
     setCurrentEvaluation(initialSample);
-
     const checkApi = async () => {
       const status = await checkBackendHealth();
       setBackendStatus(status);

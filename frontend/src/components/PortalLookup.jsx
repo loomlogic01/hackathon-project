@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Building, FileCheck, CreditCard, CheckCircle2, XCircle, Calculator, Sparkles } from 'lucide-react';
-import { verifyGstn, verifyMsme, verifyPan, checkEligibility } from '../services/api';
+import { Search, Building, FileCheck, CreditCard, CheckCircle2, XCircle, Calculator, Sparkles, ShieldAlert, Users, AlertTriangle } from 'lucide-react';
+import { verifyGstn, verifyMsme, verifyPan, checkEligibility, checkBlacklist, verifyEpfoEsic } from '../services/api';
 
 export default function PortalLookup() {
   const [gstinInput, setGstinInput] = useState('29ABCDE1234F1Z5');
@@ -15,11 +15,47 @@ export default function PortalLookup() {
   const [panResult, setPanResult] = useState(null);
   const [panLoading, setPanLoading] = useState(false);
 
+  const [blacklistInput, setBlacklistInput] = useState('ABC INFRASTRUCTURE PRIVATE LIMITED');
+  const [blacklistResult, setBlacklistResult] = useState(null);
+  const [blacklistLoading, setBlacklistLoading] = useState(false);
+
+  const [epfoInput, setEpfoInput] = useState('KN/BNG/0028194/000');
+  const [epfoResult, setEpfoResult] = useState(null);
+  const [epfoLoading, setEpfoLoading] = useState(false);
+
   const [companyName, setCompanyName] = useState('Apex Technologies');
   const [experience, setExperience] = useState(2);
   const [hasMsme, setHasMsme] = useState(true);
   const [eligibilityResult, setEligibilityResult] = useState(null);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
+
+  const handleBlacklistLookup = async (e) => {
+    e.preventDefault();
+    if (!blacklistInput.trim()) return;
+    setBlacklistLoading(true);
+    try {
+      const res = await checkBlacklist(blacklistInput);
+      setBlacklistResult(res);
+    } catch (err) {
+      setBlacklistResult({ is_blacklisted: false, status: 'ERROR', message: 'Debarment lookup request failed' });
+    } finally {
+      setBlacklistLoading(false);
+    }
+  };
+
+  const handleEpfoLookup = async (e) => {
+    e.preventDefault();
+    if (!epfoInput.trim()) return;
+    setEpfoLoading(true);
+    try {
+      const res = await verifyEpfoEsic(epfoInput);
+      setEpfoResult(res);
+    } catch (err) {
+      setEpfoResult({ valid: false, message: 'EPFO/ESIC lookup request failed' });
+    } finally {
+      setEpfoLoading(false);
+    }
+  };
 
   const handleGstnLookup = async (e) => {
     e.preventDefault();
@@ -256,6 +292,115 @@ export default function PortalLookup() {
                   <div>Holder: <span className="font-bold">{panResult.holder_name}</span></div>
                   <div>Entity: <span className="font-bold">{panResult.entity_type}</span></div>
                   <div>Status: <span className="font-bold text-emerald-700">{panResult.status}</span></div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Central Debarment & Blacklist Registry */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-black uppercase tracking-wider text-rose-900 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-rose-600" />
+                Debarment & Blacklist Registry
+              </span>
+              <span className="text-xs font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full">
+                Live GeM/CVC
+              </span>
+            </div>
+
+            <form onSubmit={handleBlacklistLookup} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Company Name or PAN:</label>
+                <input
+                  type="text"
+                  value={blacklistInput}
+                  onChange={(e) => setBlacklistInput(e.target.value)}
+                  placeholder="e.g. ABC INFRASTRUCTURE or PAN"
+                  className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={blacklistLoading}
+                className="w-full bg-rose-900 hover:bg-rose-800 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {blacklistLoading ? 'Checking Registry...' : 'Search Debarred List'}
+              </button>
+            </form>
+          </div>
+
+          {blacklistResult && (
+            <div className={`p-4 rounded-xl border text-xs ${
+              blacklistResult.is_blacklisted ? 'bg-rose-50 border-rose-300 text-rose-950' : 'bg-emerald-50 border-emerald-200 text-emerald-950'
+            }`}>
+              <div className="flex items-center gap-2 font-bold mb-2">
+                {blacklistResult.is_blacklisted ? <AlertTriangle className="w-4 h-4 text-rose-600" /> : <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                <span>{blacklistResult.status === 'BLACKLISTED' ? 'ENTITY IS DEBARRED' : 'CLEAR: Not Blacklisted'}</span>
+              </div>
+              <div className="space-y-1 text-slate-700 pt-2 border-t border-slate-200 font-medium">
+                <div>{blacklistResult.message}</div>
+                {blacklistResult.record && (
+                  <>
+                    <div>Debarred By: <span className="font-bold">{blacklistResult.record.debarred_by}</span></div>
+                    <div>Order: <span className="font-bold">{blacklistResult.record.order_no}</span></div>
+                    <div>Valid Until: <span className="font-bold text-rose-700">{blacklistResult.record.valid_until}</span></div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* EPFO / ESIC Portal */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-black uppercase tracking-wider text-teal-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-teal-600" />
+                EPFO / ESIC Labor Registry
+              </span>
+              <span className="text-xs font-bold bg-teal-50 text-teal-700 px-2.5 py-0.5 rounded-full">
+                API Live
+              </span>
+            </div>
+
+            <form onSubmit={handleEpfoLookup} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">EPFO Code or ESIC Number:</label>
+                <input
+                  type="text"
+                  value={epfoInput}
+                  onChange={(e) => setEpfoInput(e.target.value)}
+                  placeholder="e.g. KN/BNG/0028194/000 or 17-digit ESIC"
+                  className="w-full text-sm font-mono font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={epfoLoading}
+                className="w-full bg-teal-900 hover:bg-teal-800 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {epfoLoading ? 'Verifying Labor Record...' : 'Verify EPFO / ESIC'}
+              </button>
+            </form>
+          </div>
+
+          {epfoResult && (
+            <div className={`p-4 rounded-xl border text-xs ${
+              epfoResult.valid ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'
+            }`}>
+              <div className="flex items-center gap-2 font-bold mb-2">
+                {epfoResult.valid ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
+                <span>{epfoResult.message}</span>
+              </div>
+              {epfoResult.valid && (
+                <div className="space-y-1 text-slate-700 pt-2 border-t border-emerald-200 font-medium">
+                  <div>Type: <span className="font-bold">{epfoResult.type}</span></div>
+                  <div>Establishment: <span className="font-bold">{epfoResult.establishment_name}</span></div>
+                  <div>Status: <span className="font-bold text-emerald-700">{epfoResult.status}</span></div>
                 </div>
               )}
             </div>
