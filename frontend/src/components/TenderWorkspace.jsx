@@ -19,6 +19,7 @@ export default function TenderWorkspace({
   const [officerNotes, setOfficerNotes] = useState('');
   const [decisionSuccessMsg, setDecisionSuccessMsg] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
+  const API_BASE_URL = "https://gem-bid-compliance-1.onrender.com";
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -55,9 +56,10 @@ export default function TenderWorkspace({
     
     const evalData = {
       filename: sample.filename,
-      id: sample.id === 'sample-1' ? 1 : sample.id === 'sample-2' ? 2 : 3,
+      id: sample.id === 'sample-1' ? 1 : sample.id === 'sample-2' ? 2 : sample.id === 'sample-3' ? 3 : sample.id === 'sample-4' ? 4 : 5,
       tender_id: sample.tenderId,
       risk_level: sample.riskLevel,
+      is_empty_pdf: Boolean(sample.is_empty_pdf),
       parsed_data: sample.parsed,
       mock_api_verifications: {
         gstn_verification: { valid: Boolean(sample.parsed.gstin), message: sample.parsed.gstin ? "Verified Active" : "Not Found" },
@@ -71,8 +73,8 @@ export default function TenderWorkspace({
       },
       compliance_status: sample.status,
       ai_review: {
-        extraction_looks_correct: true,
-        notes: "Catalog sample verified against GeM statutory rules.",
+        extraction_looks_correct: !sample.is_empty_pdf,
+        notes: sample.is_empty_pdf ? "File is empty or contains no extractable text." : "Catalog sample verified against GeM statutory rules.",
         summary: sample.aiSummary
       },
       officer_decision: sample.officerDecision,
@@ -107,6 +109,9 @@ export default function TenderWorkspace({
   };
 
   const score = currentEvaluation?.compliance_evaluation?.overall_score ?? currentEvaluation?.score ?? 0;
+  const isEmptyPdf = Boolean(currentEvaluation?.is_empty_pdf || currentEvaluation?.parsed_data?.is_empty);
+  const isBlacklisted = Boolean(currentEvaluation?.parsed_data?.blacklist_verification?.is_blacklisted);
+  const blacklistInfo = currentEvaluation?.parsed_data?.blacklist_verification;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -119,7 +124,7 @@ export default function TenderWorkspace({
           <h2 className="text-xs font-black uppercase tracking-wider text-slate-600 block mb-3">
             Upload Bidder PDF
           </h2>
-          <label className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all ${
+          <label className={`border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all ${
             isUploading ? 'bg-blue-50 border-blue-400' : 'hover:bg-slate-50 border-slate-300 hover:border-blue-500'
           }`}>
             <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
@@ -144,7 +149,7 @@ export default function TenderWorkspace({
               Select Bid to Evaluate
             </h3>
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-100">
-              3 Submissions
+              {SAMPLE_BIDS_CATALOG.length} Submissions
             </span>
           </div>
 
@@ -172,7 +177,9 @@ export default function TenderWorkspace({
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500">
                     <span className="truncate">{s.tenderId}</span>
-                    <span className="font-semibold text-slate-700">{s.status}</span>
+                    <span className={`font-semibold ${s.status?.includes('Blacklisted') || s.status?.includes('Empty') ? 'text-rose-700' : 'text-slate-700'}`}>
+                      {s.status}
+                    </span>
                   </div>
                 </div>
               );
@@ -194,6 +201,67 @@ export default function TenderWorkspace({
         
         {currentEvaluation ? (
           <>
+            {/* EMPTY DOCUMENT BANNER IF DETECTED */}
+            {isEmptyPdf && (
+              <div className="p-6 rounded-3xl bg-rose-50 border-2 border-rose-400 text-rose-950 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center flex-shrink-0">
+                    <XCircle className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider bg-rose-200 text-rose-900 px-2.5 py-0.5 rounded">
+                        EMPTY / BLANK PDF DETECTED
+                      </span>
+                      <span className="text-xs font-bold text-rose-700">0 Points Awarded</span>
+                    </div>
+                    <h3 className="text-lg font-black text-rose-900 mt-1">
+                      Uploaded Bid Document is Completely Empty
+                    </h3>
+                    <p className="text-xs text-rose-800 mt-1 font-medium leading-relaxed">
+                      The AI extraction engine scanned the submitted PDF but found no text or statutory records. In accordance with GeM General Terms and Conditions (GTC Clause 7.1) and GFR 2017 rules, blank documents receive an automatic score of <strong>0 / 100</strong> and must be disqualified.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BLACKLIST STATUS ALERT BANNER */}
+            {isBlacklisted && (
+              <div className="p-6 rounded-3xl bg-gradient-to-r from-rose-950 to-slate-900 text-white border-2 border-rose-500 shadow-lg">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 animate-pulse">
+                    <AlertTriangle className="w-7 h-7" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider bg-rose-600 text-white px-2.5 py-1 rounded">
+                        🚨 CRITICAL RISK: DEBARRED / BLACKLISTED VENDOR
+                      </span>
+                      <span className="text-xs font-bold text-rose-300">GFR 2017 Rule 151</span>
+                    </div>
+                    <h3 className="text-lg font-black text-white mt-1.5">
+                      {blacklistInfo?.company_name || currentEvaluation.filename} is Listed on Central Debarment Database
+                    </h3>
+                    <p className="text-xs text-rose-200 mt-1 font-medium">
+                      {blacklistInfo?.record?.reason || blacklistInfo?.message}
+                    </p>
+                    <div className="mt-3 pt-3 border-t border-rose-800/80 text-xs text-rose-300 flex flex-wrap gap-4">
+                      {blacklistInfo?.record?.debarred_by && (
+                        <div>Debarring Authority: <strong className="text-white">{blacklistInfo.record.debarred_by}</strong></div>
+                      )}
+                      {blacklistInfo?.record?.order_no && (
+                        <div>Order Ref: <strong className="text-white">{blacklistInfo.record.order_no}</strong></div>
+                      )}
+                      {blacklistInfo?.record?.valid_until && (
+                        <div>Debarment Period: <strong className="text-white">Active until {blacklistInfo.record.valid_until}</strong></div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Top Bid Header & Instant Officer Actions Card */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
               
@@ -205,7 +273,9 @@ export default function TenderWorkspace({
                       Tender Ref: {currentEvaluation.tender_id || currentEvaluation.parsed_data?.tender_ref_id || 'GEM/2026/B/894721'}
                     </span>
                     <span className={`text-xs font-black px-2.5 py-1 rounded ${
-                      score >= 80
+                      isBlacklisted || isEmptyPdf
+                        ? 'bg-rose-100 text-rose-800'
+                        : score >= 80
                         ? 'bg-emerald-100 text-emerald-800'
                         : score >= 50
                         ? 'bg-amber-100 text-amber-800'
@@ -235,7 +305,7 @@ export default function TenderWorkspace({
                     onClick={() => setShowReportModal(true)}
                     className="p-3 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-800 hover:text-blue-900 border border-slate-200 transition-all font-bold text-xs flex items-center gap-2 cursor-pointer"
                   >
-                    <Eye className="w-4 h-4 text-blue-600" />
+                    <Eye size={16} color="#2563eb" />
                     <span>Certificate</span>
                   </button>
                 </div>
@@ -272,8 +342,11 @@ export default function TenderWorkspace({
                   {/* APPROVE BUTTON */}
                   <button
                     onClick={() => handleDecisionSubmit('Approved')}
+                    disabled={isBlacklisted || isEmptyPdf}
                     className={`p-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
-                      officerDecision === 'Approved'
+                      isBlacklisted || isEmptyPdf
+                        ? 'opacity-40 cursor-not-allowed bg-slate-800 text-slate-500'
+                        : officerDecision === 'Approved'
                         ? 'bg-emerald-600 text-white ring-2 ring-emerald-400 shadow-md'
                         : 'bg-emerald-700 hover:bg-emerald-600 text-white'
                     }`}
@@ -314,7 +387,7 @@ export default function TenderWorkspace({
               <div className="space-y-3 pt-2">
                 <div className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center justify-between">
                   <span>Mandatory Statutory & Regulatory Checklist (GeM GTC 7.1)</span>
-                  <span className="text-xs text-slate-400 font-bold">5 Pillars • 20 Pts Each</span>
+                  <span className="text-xs text-slate-500 font-bold">Comprehensive Statutory Audit (100 Pts Max)</span>
                 </div>
 
                 {/* Passed items */}
@@ -325,7 +398,7 @@ export default function TenderWorkspace({
                       <span>{check}</span>
                     </div>
                     <span className="text-xs font-black text-emerald-800 bg-emerald-100 px-3 py-1 rounded">
-                      +20 Pts • Valid
+                      Verified • Valid
                     </span>
                   </div>
                 ))}
@@ -338,55 +411,134 @@ export default function TenderWorkspace({
                       <span>{check}</span>
                     </div>
                     <span className="text-xs font-black text-rose-800 bg-rose-100 px-3 py-1 rounded">
-                      0 Pts • Missing / Non-Compliant
+                      Non-Compliant
                     </span>
                   </div>
                 ))}
               </div>
 
               {/* Extracted Attributes Grid */}
-              <div className="pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+              <div className="pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5 text-xs">
+                {/* MSME */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Udyam MSME</span>
-                  <span className="font-extrabold text-slate-900 text-sm truncate block">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">MSME / Udyam</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
                     {currentEvaluation.parsed_data?.udyam_no || (currentEvaluation.parsed_data?.has_msme_cert ? "Udyam Declared" : "Missing")}
                   </span>
+                  <span className="text-[10px] font-semibold text-emerald-600 block mt-1">
+                    {currentEvaluation.mock_api_verifications?.msme_verification?.valid ? "● Portal Active" : "○ Unverified"}
+                  </span>
                 </div>
 
+                {/* GSTIN */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">GSTIN</span>
-                  <span className="font-extrabold text-slate-900 text-sm truncate block">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">GSTIN</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
                     {currentEvaluation.parsed_data?.gstin || "Missing"}
                   </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Income Tax PAN</span>
-                  <span className="font-extrabold text-slate-900 text-sm truncate block">
-                    {currentEvaluation.parsed_data?.pan_no || "Missing"}
+                  <span className="text-[10px] font-semibold text-emerald-600 block mt-1">
+                    {currentEvaluation.mock_api_verifications?.gstn_verification?.valid ? "● GSTN Verified" : "○ Unverified"}
                   </span>
                 </div>
 
+                {/* PAN */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Experience</span>
-                  <span className="font-extrabold text-slate-900 text-sm">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Income Tax PAN</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
+                    {currentEvaluation.parsed_data?.pan_no || "Missing"}
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-600 block mt-1">
+                    {currentEvaluation.mock_api_verifications?.pan_verification?.valid ? "● PAN Active" : "○ Unverified"}
+                  </span>
+                </div>
+
+                {/* Blacklist / Debarment Status */}
+                <div className={`p-3 rounded-xl border ${isBlacklisted ? 'bg-rose-50 border-rose-300' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Blacklist Screening</span>
+                  <span className={`font-extrabold text-xs block ${isBlacklisted ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    {isBlacklisted ? "🚨 BLACKLISTED" : "● CLEARED"}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-1 truncate">
+                    {isBlacklisted ? "Found on GeM list" : "No adverse records"}
+                  </span>
+                </div>
+
+                {/* EPFO Code */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">EPFO Registration</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
+                    {currentEvaluation.parsed_data?.epfo_esic?.epfo_code || "Not Found"}
+                  </span>
+                  <span className={`text-[10px] font-semibold block mt-1 ${currentEvaluation.parsed_data?.epfo_esic?.epfo_code ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {currentEvaluation.parsed_data?.epfo_esic?.epfo_code ? "● EPFO Active" : "○ Missing"}
+                  </span>
+                </div>
+
+                {/* ESIC Code */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">ESIC Insurance</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
+                    {currentEvaluation.parsed_data?.epfo_esic?.esic_code || "Not Found"}
+                  </span>
+                  <span className={`text-[10px] font-semibold block mt-1 ${currentEvaluation.parsed_data?.epfo_esic?.esic_code ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {currentEvaluation.parsed_data?.epfo_esic?.esic_code ? "● ESIC Active" : "○ Missing"}
+                  </span>
+                </div>
+
+                {/* Startup India / NSIC */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Startup / NSIC</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
+                    {currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.details || (currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found ? "Startup Recognized" : (currentEvaluation.parsed_data?.startup_nsic_oem?.nsic?.details || "Not Applicable"))}
+                  </span>
+                  <span className={`text-[10px] font-semibold block mt-1 ${currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found || currentEvaluation.parsed_data?.startup_nsic_oem?.nsic?.found ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {currentEvaluation.parsed_data?.startup_nsic_oem?.startup_india?.found ? "● DPIIT Recognized" : "○ Standard Vendor"}
+                  </span>
+                </div>
+
+                {/* OEM Authorization */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">OEM Authorization</span>
+                  <span className="font-extrabold text-slate-900 text-xs truncate block">
+                    {currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.details || (currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? "OEM Authorized" : "Not Provided")}
+                  </span>
+                  <span className={`text-[10px] font-semibold block mt-1 ${currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {currentEvaluation.parsed_data?.startup_nsic_oem?.oem_authorization?.found ? "● MAF Attached" : "○ Reseller/Direct"}
+                  </span>
+                </div>
+
+                {/* Experience */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Experience</span>
+                  <span className="font-extrabold text-slate-900 text-xs">
                     {currentEvaluation.parsed_data?.years_of_experience ?? 0} Years
                   </span>
                 </div>
 
+                {/* Turnover */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Turnover</span>
-                  <span className="font-extrabold text-slate-900 text-sm">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Turnover</span>
+                  <span className="font-extrabold text-slate-900 text-xs">
                     ₹{(currentEvaluation.parsed_data?.turnover_amount ?? 0).toLocaleString()}
                   </span>
                 </div>
 
+                {/* Non-Blacklisting Affidavit */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Non-Blacklisting</span>
-                  <span className="font-extrabold text-slate-900 text-sm">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Affidavit Declaration</span>
+                  <span className="font-extrabold text-slate-900 text-xs">
                     {currentEvaluation.parsed_data?.has_affidavit ? "Submitted" : "Missing"}
                   </span>
                 </div>
+
+                {/* Make in India */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 text-[11px] font-bold uppercase block mb-1">Make in India</span>
+                  <span className="font-extrabold text-slate-900 text-xs">
+                    {currentEvaluation.parsed_data?.make_in_india?.local_content_percentage ? `${currentEvaluation.parsed_data.make_in_india.local_content_percentage}% Local Content` : "Not Declared"}
+                  </span>
+                </div>
+
               </div>
 
             </div>
@@ -401,7 +553,7 @@ export default function TenderWorkspace({
                   </span>
                 </div>
                 <span className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-1 rounded-full font-bold">
-                  GFR 2017 Verified
+                  GFR 2017 & GTC 7.1 Verified
                 </span>
               </div>
               <p className="text-sm leading-relaxed text-slate-200 font-medium">

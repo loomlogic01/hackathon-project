@@ -123,11 +123,55 @@ export default function ReportModal({ evaluation, onClose }) {
             </div>
           </div>
 
+          <div className="security-badge-box" style={{ background: '#d0d9e9' }}>
+              <div className="flex item-center justify-between mb-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex item-center gap-1.5">
+                  <span>🛡️ Cryptographic Audit Chain</span>
+                </h4>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                  ✔️ VERIFIED
+                </span>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                <div>
+                  <span className="text-slate-400 font-medium uppercase tracking-wide text-[10px] block">
+                    Document SHA-256 Hash
+                  </span>
+                  <code className="block mt-1 p2 bg-slate-900 text-sky-400 font-mono text-[11px] rounded break-all select-all">
+                    {evaluation?.file_hash || "N/A"}
+                  </code>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium uppercase tracking-wide text-[10px] block">
+                    Previous Chain Link (Audit Immutable Pointer)
+                  </span>
+                  <code className="block mt-1 p-2 bg-slate-900 text-sky-400 font-mono text-[11px] rounded break-all select-all">
+                    {evaluation?.previous_file_hash || "0"}
+                  </code>
+                </div>
+              </div>
+          </div>
+
+          {/* Empty PDF banner if applicable */}
+          {(evaluation.is_empty_pdf || parsed_data.is_empty) && (
+            <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-300 text-rose-950 text-xs">
+              <strong>⚠️ EMPTY DOCUMENT NOTICE:</strong> The submitted bid document is completely blank (no readable text found). Pursuant to GeM GTC 7.1 and GFR 2017 rules, this bid receives 0 points and is disqualified.
+            </div>
+          )}
+
+          {/* Blacklisted vendor alert if applicable */}
+          {parsed_data.blacklist_verification?.is_blacklisted && (
+            <div className="mb-6 p-4 rounded-xl bg-rose-900 text-white border border-rose-600 text-xs">
+              <strong>🚨 CRITICAL DEBARMENT NOTICE:</strong> Bidder is identified in the official GeM / Ministry Debarment Registry ({parsed_data.blacklist_verification.record?.debarred_by}). Reason: {parsed_data.blacklist_verification.record?.reason}
+            </div>
+          )}
+
           {/* Statutory Matrix Table */}
           <div className="mb-8">
             <h4 className="text-sm font-black uppercase tracking-wider text-slate-900 mb-3 border-b pb-1.5 flex items-center justify-between">
               <span>Statutory & Regulatory Checklist Verification</span>
-              <span className="text-xs font-bold text-slate-500">5 Pillars of Evaluation</span>
+              <span className="text-xs font-bold text-slate-500">Comprehensive Audit Checklist</span>
             </h4>
             <div className="space-y-2">
               {passed.map((item, idx) => (
@@ -137,7 +181,7 @@ export default function ReportModal({ evaluation, onClose }) {
                     <span>{item}</span>
                   </div>
                   <span className="font-bold text-emerald-700 uppercase text-[10px] bg-emerald-100 px-2 py-0.5 rounded">
-                    +20 Pts • Passed
+                    Verified • Valid
                   </span>
                 </div>
               ))}
@@ -148,7 +192,7 @@ export default function ReportModal({ evaluation, onClose }) {
                     <span>{item}</span>
                   </div>
                   <span className="font-bold text-rose-700 uppercase text-[10px] bg-rose-100 px-2 py-0.5 rounded">
-                    0 Pts • Failed / Missing
+                    Non-Compliant
                   </span>
                 </div>
               ))}

@@ -29,9 +29,23 @@ def init_db():
         officer_decision VARCHAR(50) DEFAULT 'Pending Review',
         officer_notes TEXT DEFAULT '',
         ai_summary TEXT DEFAULT '',
+        file_hash TEXT DEFAULT '',
+        previous_file_hash TEXT DEFAULT '0',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+    # Safely ensure new columns exist for SQLite schema migration
+    new_columns = [
+        ("epfo_esic_verification", "TEXT DEFAULT '{}'"),
+        ("startup_nsic_oem", "TEXT DEFAULT '{}'"),
+        ("blacklist_verification", "TEXT DEFAULT '{}'"),
+        ("is_empty_pdf", "BOOLEAN DEFAULT 0")
+    ]
+    for col_name, col_def in new_columns:
+        try:
+            cur.execute(f"ALTER TABLE bid_evalution ADD COLUMN {col_name} {col_def};")
+        except Exception:
+            pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -46,11 +60,17 @@ def get_all_evaluations():
     for row in rows:
         item = dict(row)
         try:
-            item['gstn_verification'] = json.loads(item['gstn_verification']) if isinstance(item['gstn_verification'], str) else item['gstn_verification']
-            item['msme_verification'] = json.loads(item['msme_verification']) if isinstance(item['msme_verification'], str) else item['msme_verification']
-            item['pan_verification'] = json.loads(item['pan_verification']) if isinstance(item['pan_verification'], str) else item['pan_verification']
-            item['passed_checks'] = json.loads(item['passed_checks']) if isinstance(item['passed_checks'], str) else item['passed_checks']
-            item['failed_checks'] = json.loads(item['failed_checks']) if isinstance(item['failed_checks'], str) else item['failed_checks']
+            item['gstn_verification'] = json.loads(item['gstn_verification']) if isinstance(item['gstn_verification'], str) else item.get('gstn_verification', {})
+            item['msme_verification'] = json.loads(item['msme_verification']) if isinstance(item['msme_verification'], str) else item.get('msme_verification', {})
+            item['pan_verification'] = json.loads(item['pan_verification']) if isinstance(item['pan_verification'], str) else item.get('pan_verification', {})
+            item['passed_checks'] = json.loads(item['passed_checks']) if isinstance(item['passed_checks'], str) else item.get('passed_checks', [])
+            item['failed_checks'] = json.loads(item['failed_checks']) if isinstance(item['failed_checks'], str) else item.get('failed_checks', [])
+            if 'epfo_esic_verification' in item:
+                item['epfo_esic_verification'] = json.loads(item['epfo_esic_verification']) if isinstance(item['epfo_esic_verification'], str) else item.get('epfo_esic_verification', {})
+            if 'startup_nsic_oem' in item:
+                item['startup_nsic_oem'] = json.loads(item['startup_nsic_oem']) if isinstance(item['startup_nsic_oem'], str) else item.get('startup_nsic_oem', {})
+            if 'blacklist_verification' in item:
+                item['blacklist_verification'] = json.loads(item['blacklist_verification']) if isinstance(item['blacklist_verification'], str) else item.get('blacklist_verification', {})
         except Exception:
             pass
         results.append(item)

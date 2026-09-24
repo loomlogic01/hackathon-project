@@ -2,24 +2,38 @@ import React, { useState } from 'react';
 import { Shield, Lock, User, KeyRound, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState('officer@gem.gov.in');
   const [officerId, setOfficerId] = useState('GEM-PO-2026');
   const [password, setPassword] = useState('••••••••••••');
   const [selectedRole, setSelectedRole] = useState('Senior Procurement Officer (Tender Authority)');
   const [error, setError] = useState('');
-
-  const handleSubmit = (e) => {
+  const API_BASE_URL = 'https://gem-bid-compliance-1.onrender.com'
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!officerId.trim()) {
-      setError('Please enter your Officer ID or Official Gov Email');
-      return;
-    }
-    onLogin({
-      id: officerId,
-      name: officerId === 'GEM-PO-2026' ? 'Rajesh Kumar' : 'Procurement Officer',
-      role: selectedRole,
-      department: 'Ministry of Commerce & Industry',
-      clearance: 'Level-3 Tender Authority'
+    setError('');
+    
+    try {
+    const response = await fetch(`${API_BASE_URL}/login/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email || officerId,
+        password,
+      }),
     });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Login failed. Please check your credentials.');
+    }
+    localStorage.setItem('officer', JSON.stringify(data.officer));
+    if (onLogin) onLogin(data.officer);
+  } catch (err) {
+    setError(err.message);
+  }
   };
 
   const handleQuickDemoLogin = () => {
